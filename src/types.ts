@@ -70,7 +70,7 @@ export interface Operation {
 export interface ExecuteResult<T = unknown> {
   success: boolean;
   data?: T;
-  error?: { message: string };
+  error?: { message: string; code?: string };
 }
 
 export interface SendRequest {
