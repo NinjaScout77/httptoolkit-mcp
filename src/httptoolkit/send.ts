@@ -1,3 +1,14 @@
+/**
+ * NOTE: As of httptoolkit-mcp 0.1.0, the `/client/send` request/response format
+ * has NOT been verified end-to-end with a real auth token. The encoding details
+ * here (base64 rawBody on request, base64 rawBody on response-body-part) are
+ * inferred from reading httptoolkit-server source. If you encounter garbled
+ * response bodies or send failures, please open an issue with the captured
+ * NDJSON stream.
+ *
+ * Tracking: https://github.com/NinjaScout77/httptoolkit-mcp/issues/7
+ */
+
 import { request as undiciRequest } from 'undici';
 import type { Readable } from 'node:stream';
 import * as readline from 'node:readline';
