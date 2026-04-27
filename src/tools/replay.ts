@@ -2,6 +2,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { randomUUID } from 'node:crypto';
 
+import { AuthTokenMissingError } from '../core/errors.js';
 import { requireAuthToken } from '../httptoolkit/auth.js';
 import { executeOperation } from '../httptoolkit/bridge.js';
 import { sendRequest, probeUpstream } from '../httptoolkit/send.js';
@@ -168,6 +169,12 @@ export function registerReplayTools(server: McpServer): void {
           content: [{ type: 'text' as const, text: JSON.stringify(output, null, 2) }],
         };
       } catch (err) {
+        if (err instanceof AuthTokenMissingError) {
+          return {
+            content: [{ type: 'text' as const, text: JSON.stringify(err.toErrorPayload(), null, 2) }],
+            isError: true,
+          };
+        }
         const message = err instanceof Error ? err.message : String(err);
         const code = (err as { code?: string }).code ?? 'UNKNOWN';
         log.error('replay_request failed', { error: message, code });
@@ -297,6 +304,12 @@ export function registerReplayTools(server: McpServer): void {
           content: [{ type: 'text' as const, text: JSON.stringify(output, null, 2) }],
         };
       } catch (err) {
+        if (err instanceof AuthTokenMissingError) {
+          return {
+            content: [{ type: 'text' as const, text: JSON.stringify(err.toErrorPayload(), null, 2) }],
+            isError: true,
+          };
+        }
         const message = err instanceof Error ? err.message : String(err);
         const code = (err as { code?: string }).code ?? 'UNKNOWN';
         log.error('replay_raw failed', { error: message, code });

@@ -9,15 +9,33 @@ export class HttpToolkitMcpError extends Error {
 }
 
 export class AuthTokenMissingError extends HttpToolkitMcpError {
+  public readonly tools_affected = ['replay_request', 'replay_raw'];
+  public readonly tools_still_available = [
+    'events_list',
+    'events_get',
+    'events_body',
+    'server_status',
+    'interceptors_list',
+  ];
+  public readonly docs = 'https://github.com/NinjaScout77/httptoolkit-mcp#authentication';
+
   constructor() {
     super(
       'HTK_SERVER_TOKEN is required for replay tools. ' +
-        'Read tools (events_list, events_get, etc.) work without it. ' +
-        'To enable replay: set HTK_SERVER_TOKEN in your environment. ' +
-        'See README#authentication for how to obtain the token on your OS.',
+        'Read tools work without it. See README#authentication.',
       'AUTH_TOKEN_MISSING',
     );
     this.name = 'AuthTokenMissingError';
+  }
+
+  toErrorPayload(): Record<string, unknown> {
+    return {
+      error: this.code,
+      message: this.message,
+      tools_affected: this.tools_affected,
+      tools_still_available: this.tools_still_available,
+      docs: this.docs,
+    };
   }
 }
 
