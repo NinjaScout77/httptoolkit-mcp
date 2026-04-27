@@ -1,5 +1,4 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { z } from 'zod';
 import { createRequire } from 'node:module';
 
 import { executeOperation, checkStatus } from '../httptoolkit/bridge.js';
