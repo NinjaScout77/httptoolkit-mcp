@@ -274,6 +274,12 @@ Auto-rotates at 100MB. Cannot be disabled.
 
 Default 10 requests/second per target host. Configurable via `REPLAY_RATE_LIMIT_RPS`.
 
+## Known limitations
+
+- **`/client/send` wire format is unverified.** Phase 1 inferred encoding details from HTTPToolkit's source rather than testing end-to-end with a real auth token. Replay tools should work, but if you observe garbled response bodies or unexpected send failures, please file an issue with details. Tracking: [#7](https://github.com/NinjaScout77/httptoolkit-mcp/issues/7).
+- **No automatic token discovery.** See [Authentication](#authentication) above.
+- **No persistent capture history beyond what HTTPToolkit holds.** All read operations query HTTPToolkit's own event store; restarting HTTPToolkit clears it.
+
 ## Credits
 
 Built by [Pradeep Suvarna](https://github.com/NinjaScout77) (NinjaScout77).
