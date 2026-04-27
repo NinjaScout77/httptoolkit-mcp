@@ -78,6 +78,20 @@ export class MutationError extends HttpToolkitMcpError {
   }
 }
 
+export class OperationFailedError extends HttpToolkitMcpError {
+  constructor(
+    public readonly operation: string,
+    public readonly upstreamMessage: string,
+    public readonly upstreamCode?: string,
+  ) {
+    super(
+      `HTTPToolkit operation "${operation}" failed: ${upstreamMessage}`,
+      'OPERATION_FAILED',
+    );
+    this.name = 'OperationFailedError';
+  }
+}
+
 export class SocketConnectionError extends HttpToolkitMcpError {
   constructor(public readonly socketPath: string) {
     super(

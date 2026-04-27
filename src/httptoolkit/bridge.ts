@@ -1,4 +1,5 @@
 import type { ExecuteResult, Operation } from '../types.js';
+import { OperationFailedError, ProRequiredError } from '../core/errors.js';
 import { createLogger } from '../util/logger.js';
 import { socketRequest } from './client.js';
 
@@ -44,7 +45,11 @@ export async function executeOperation<T = unknown>(
   });
 
   if (result && !result.success && result.error) {
-    throw new Error(`Operation ${name} failed: ${result.error.message}`);
+    const upstreamMessage = result.error.message ?? 'Unknown error';
+    if (/pro/i.test(upstreamMessage)) {
+      throw new ProRequiredError(name);
+    }
+    throw new OperationFailedError(name, upstreamMessage, result.error.code);
   }
 
   return result.data as T;
