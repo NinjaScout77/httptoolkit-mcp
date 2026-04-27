@@ -47,11 +47,34 @@ export async function sendRequest(
       ? Buffer.from(request.rawBody).toString('base64')
       : request.rawBody.toString('base64');
 
+  // Ensure Host header is present (required by HTTP/1.1)
+  const headers = [...request.headers];
+  const hasHost = headers.some(([name]) => name.toLowerCase() === 'host');
+  if (!hasHost) {
+    try {
+      const parsed = new URL(request.url);
+      headers.unshift(['Host', parsed.host]);
+    } catch {
+      // URL parsing failed — skip auto-Host, let the server handle it
+    }
+  }
+
+  // Ensure Content-Length is present when there's a body.
+  // HTTPToolkit's http-client uses setDefaultHeaders: false which prevents
+  // Node.js from auto-adding Content-Length, causing empty bodies on the wire.
+  const rawBodyBytes = Buffer.from(rawBodyBase64, 'base64');
+  if (rawBodyBytes.byteLength > 0) {
+    const hasContentLength = headers.some(([name]) => name.toLowerCase() === 'content-length');
+    if (!hasContentLength) {
+      headers.push(['Content-Length', String(rawBodyBytes.byteLength)]);
+    }
+  }
+
   const body = {
     request: {
       method: request.method,
       url: request.url,
-      headers: request.headers,
+      headers,
       rawBody: rawBodyBase64,
     },
     options: {

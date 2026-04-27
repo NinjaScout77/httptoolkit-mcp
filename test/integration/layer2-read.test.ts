@@ -72,7 +72,6 @@ describe('Layer 2 — Read Tools (no auth required)', () => {
   // L2.3
   describe('L2.3 — events_list (no filter)', () => {
     let eventsList: Array<Record<string, unknown>>;
-    let totalEvents: number;
 
     it('returns captured events', async () => {
       const result = await client.callTool('events_list', { limit: 50 });
@@ -85,7 +84,6 @@ describe('Layer 2 — Read Tools (no auth required)', () => {
       expect(parsed.events).toBeDefined();
       expect(Array.isArray(parsed.events)).toBe(true);
 
-      totalEvents = parsed.total;
       eventsList = parsed.events;
 
       if (eventsList.length > 0) {

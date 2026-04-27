@@ -30,8 +30,18 @@ export class McpClient {
   async start(env: Record<string, string> = {}): Promise<void> {
     const distIndex = path.resolve(process.cwd(), 'dist', 'index.js');
 
+    // Merge env, deleting keys with empty string values
+    const mergedEnv: Record<string, string> = { ...process.env } as Record<string, string>;
+    for (const [key, value] of Object.entries(env)) {
+      if (value === '') {
+        delete mergedEnv[key];
+      } else {
+        mergedEnv[key] = value;
+      }
+    }
+
     this.proc = spawn('node', [distIndex], {
-      env: { ...process.env, ...env },
+      env: mergedEnv,
       stdio: ['pipe', 'pipe', 'inherit'],
     });
 
