@@ -51,4 +51,25 @@ describe('auth', () => {
       expect(() => requireAuthToken()).toThrow(/README#authentication/);
     });
   });
+
+  describe('AuthTokenMissingError.toErrorPayload', () => {
+    it('returns structured payload with tools_affected and tools_still_available', () => {
+      const err = new AuthTokenMissingError();
+      const payload = err.toErrorPayload();
+
+      expect(payload.error).toBe('AUTH_TOKEN_MISSING');
+      expect(payload.message).toMatch(/HTK_SERVER_TOKEN is required/);
+      expect(payload.tools_affected).toEqual(['replay_request', 'replay_raw']);
+      expect(payload.tools_still_available).toEqual([
+        'events_list',
+        'events_get',
+        'events_body',
+        'server_status',
+        'interceptors_list',
+      ]);
+      expect(payload.docs).toBe(
+        'https://github.com/NinjaScout77/httptoolkit-mcp#authentication',
+      );
+    });
+  });
 });
