@@ -92,9 +92,9 @@ This MCP fills the gap between what HTTPToolkit's bundled MCP does and what a se
                               └────────────────┘
 ```
 
-**Read tools** delegate to HTTPToolkit's official `/api/operations` bridge. We do not duplicate event storage — HTTPToolkit owns it, we query it.
+**Read tools** delegate to HTTPToolkit's official `/api/operations` bridge via Unix domain socket. We do not duplicate event storage — HTTPToolkit owns it, we query it. No auth needed.
 
-**Replay tools** call `POST /client/send` with mutated request bodies. Optionally configured to route through Burp upstream.
+**Replay tools** call `POST /client/send` on the HTTP API (port 45457, auth required) with mutated request bodies. Request `rawBody` is base64-encoded. Response body parts in the NDJSON stream are also base64-encoded. Optionally configured to route through Burp upstream.
 
 **Capture tools** subscribe to the existing UI session's WebSocket on port 45456 and stream events into our in-memory ring buffer. (Note: this part is the trickiest and Phase 2 work — Phase 1 ships without it.)
 
@@ -228,27 +228,48 @@ These are non-negotiable. The MCP is going to be aimed at real systems by an LLM
 
 ## Cross-platform concerns
 
+### Two communication channels (VERIFIED 2026-04-27)
+
+HTTPToolkit exposes two local interfaces. Our MCP uses both:
+
+1. **Unix domain socket** — no auth required, used by the built-in MCP:
+   - macOS: `$TMPDIR/httptoolkit-ctl.sock`
+   - Linux: `$XDG_RUNTIME_DIR/httptoolkit-ctl.sock` or `/tmp/httptoolkit-<uid>/httptoolkit-ctl.sock`
+   - Windows: `\\.\pipe\httptoolkit-ctl`
+   - Serves: `/api/status`, `/api/operations`, `/api/execute`
+   - Sufficient for all read tools (events, interceptors, proxy config)
+
+2. **HTTP REST API** on port 45457 — requires Bearer auth + CORS Origin:
+   - Serves: everything above PLUS `/client/send`, `/interceptors/:id/activate`, `/version`, etc.
+   - `/client/send` is **only** available here, not on the socket
+   - Required for replay tools
+
+**Architecture decision:** Use Unix socket for all read operations (zero config), HTTP with auth for replay operations. This means read tools work out of the box, replay requires `HTK_SERVER_TOKEN`.
+
 ### Auth token detection (`src/httptoolkit/auth.ts`)
 
-Resolution order:
+**VERIFIED:** There is NO file-based auth token. The desktop app generates an ephemeral token at each startup and passes it to the server via `HTK_SERVER_TOKEN` env var. The server deletes the env var after reading it.
 
-1. `HTK_SERVER_TOKEN` env var
-2. Token file at OS-specific path:
-   - macOS: `~/Library/Application Support/httptoolkit/auth-token`
-   - Linux: `~/.config/httptoolkit/auth-token`
-   - Windows: `%APPDATA%\httptoolkit\auth-token`
-3. If none found, return `null` and log a clear error: "HTTPToolkit auth token not found. Set HTK_SERVER_TOKEN or ensure HTTPToolkit desktop app is running. See README#auth for details."
+Resolution order for HTTP auth (replay tools only):
 
-**Phase 1 deliverable:** verify the token file path on at least macOS and Linux by inspecting a real running HTTPToolkit. If the path turns out to be different from what's documented, update this doc.
+1. `HTK_SERVER_TOKEN` env var — user must extract this from the running desktop app
+2. If not found, return `null`. Read tools still work via socket. Replay tools return a clear error: "HTK_SERVER_TOKEN required for replay. Read tools work without it."
+
+**How users get the token:** The token is generated per session by the Electron app. Users can:
+- Extract it from browser DevTools in the HTTPToolkit UI
+- Start the server manually with `--token <value>` for a known token
+- We may provide a helper script or document the extraction process
 
 ### CORS Origin header
 
-HTTPToolkit's API requires an Origin from an allowlist. Set:
+Only needed for HTTP API (port 45457), not for Unix socket.
 
-- `Origin: https://app.httptoolkit.tech` if auth token is present (prod desktop builds)
-- `Origin: http://localhost` otherwise (dev / open builds)
+HTTPToolkit's API requires an Origin from an allowlist (VERIFIED from source):
 
-This matches the pattern in HTTPToolkit's own UI client.
+- **Prod builds** (`IS_PROD_BUILD=true`): Only `https://app.httptoolkit.tech`
+- **Dev builds**: Also `http://localhost`, `http://127.0.0.x`, `http://local.httptoolkit.tech`
+
+We set `Origin: https://app.httptoolkit.tech` for prod builds (most users).
 
 ### Burp upstream
 
