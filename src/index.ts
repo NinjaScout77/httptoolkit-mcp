@@ -1,26 +1,24 @@
 #!/usr/bin/env node
 
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 
 import { createRequire } from 'node:module';
 
-const require = createRequire(import.meta.url);
-const pkg = require('../package.json') as { name: string; version: string };
+import { createMcpServer } from './server.js';
 
-const server = new McpServer({
-  name: pkg.name,
-  version: pkg.version,
-});
+const require = createRequire(import.meta.url);
+const pkg = require('../package.json') as { version: string };
 
 async function main(): Promise<void> {
   const transport = new StdioServerTransport();
-  console.error(`httptoolkit-mcp v${pkg.version} starting`);
+  const server = createMcpServer();
+
+  process.stderr.write(`httptoolkit-mcp v${pkg.version} starting\n`);
   await server.connect(transport);
-  console.error('httptoolkit-mcp connected via stdio');
+  process.stderr.write('httptoolkit-mcp connected via stdio\n');
 }
 
 main().catch((error: unknown) => {
-  console.error('Fatal error:', error);
+  process.stderr.write(`Fatal error: ${error}\n`);
   process.exit(1);
 });
