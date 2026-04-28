@@ -1,6 +1,6 @@
 {
   "name": "@ninjascout77/httptoolkit-mcp",
-  "version": "0.1.0-dev",
+  "version": "0.2.0",
   "description": "Drive HTTPToolkit from any MCP-compatible LLM client",
   "author": "Pradeep Suvarna (NinjaScout77)",
   "license": "MIT",
