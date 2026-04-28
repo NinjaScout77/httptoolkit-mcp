@@ -297,6 +297,48 @@ Default 10 requests/second per target host. Configurable via `REPLAY_RATE_LIMIT_
 - **No automatic token discovery.** See [Authentication](#authentication) above.
 - **No persistent capture history beyond what HTTPToolkit holds.** All read operations query HTTPToolkit's own event store; restarting HTTPToolkit clears it.
 
+## Troubleshooting
+
+### "Cannot connect to HTTPToolkit via socket at /tmp/httptoolkit-XXX/..." on macOS
+
+**Symptom:** The MCP tools fail with errors like `Cannot connect to HTTPToolkit via socket at /tmp/httptoolkit-501/httptoolkit-ctl.sock` even though HTTPToolkit's desktop app is running.
+
+**Cause:** Some LLM clients (notably Claude Desktop, possibly others) launch MCP child processes with sanitized environments that don't propagate `$TMPDIR`. On macOS this causes the MCP to compute the wrong socket path.
+
+**Fix:** Upgrade to `@ninjascout77/httptoolkit-mcp@>=0.1.1` if available. If you must use an earlier version, inject `TMPDIR` via your LLM client's MCP config:
+
+```json
+{
+  "mcpServers": {
+    "httptoolkit": {
+      "command": "/opt/homebrew/bin/node",
+      "args": ["/path/to/httptoolkit-mcp/dist/index.js"],
+      "env": {
+        "TMPDIR": "/var/folders/.../T/"
+      }
+    }
+  }
+}
+```
+
+Get your actual `TMPDIR` value with `getconf DARWIN_USER_TEMP_DIR`.
+
+### MCP not appearing in Claude Desktop's connectors list
+
+**Cause:** Usually a JSON syntax error in `claude_desktop_config.json` or a wrong path to `node`/`dist/index.js`.
+
+**Fix:**
+1. Validate the config is valid JSON: `cat ~/Library/Application\ Support/Claude/claude_desktop_config.json | python3 -m json.tool`
+2. Confirm the absolute path to your node binary: `which node`
+3. Confirm `dist/index.js` exists in your repo: `ls /path/to/httptoolkit-mcp/dist/index.js`
+4. Check the MCP launch log: `tail -50 ~/Library/Logs/Claude/mcp-server-httptoolkit.log`
+
+### "replayAvailable: false" on a Pro account
+
+**Cause:** Replay tools require both an HTTPToolkit Pro license AND `HTK_SERVER_TOKEN` set in the MCP's environment. The desktop app generates a token internally but doesn't currently expose it externally — see [issue #6](https://github.com/NinjaScout77/httptoolkit-mcp/issues/6) for the tracking.
+
+**Workaround:** For replay-driven security testing today, use Burp upstream as documented in [Burp Suite upstream](#burp-suite-upstream). Read tools work without a token.
+
 ## Credits
 
 Built by [Pradeep Suvarna](https://github.com/NinjaScout77) (NinjaScout77).
