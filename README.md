@@ -197,6 +197,10 @@ Input: {
 Output: { status, headers, body, timing, replay_id, audit_id }
 ```
 
+#### Verifying replays
+
+When `replay_request` or `replay_raw` fire, the response is returned directly to the LLM and the replay is recorded in `~/.httptoolkit-mcp/audit.jsonl`. The replay does **not** appear in HTTPToolkit's View tab (which shows organic intercepted traffic) or as a new Send tab entry (which is UI-initiated only). The audit log is your ground truth for what the LLM actually fired. This is HTTPToolkit's architectural choice — `/client/send` calls via API bypass the proxy capture path.
+
 ## Tier requirements
 
 Based on initial testing — please open an issue if you find corrections.
