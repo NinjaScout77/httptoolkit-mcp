@@ -5,7 +5,7 @@ import {
   invalidateTokenCache,
   resetAuthState,
 } from '../../src/httptoolkit/auth.js';
-import { AuthTokenMissingError } from '../../src/core/errors.js';
+import { AuthTokenMissingError, HttpToolkitNotRunningError } from '../../src/core/errors.js';
 
 describe('auth', () => {
   let originalEnv: string | undefined;
@@ -61,29 +61,26 @@ describe('auth', () => {
       expect(requireAuthToken()).toBe('my-secret-token');
     });
 
-    it('may auto-detect or throw when env var not set', () => {
+    it('may auto-detect, throw NotRunning, or throw AuthMissing when env var not set', () => {
       delete process.env['HTK_SERVER_TOKEN'];
-      // If HTTPToolkit is running, auto-detection succeeds
-      // If not, throws AuthTokenMissingError
       try {
         const token = requireAuthToken();
+        // Auto-detection succeeded
         expect(typeof token).toBe('string');
         expect(token.length).toBeGreaterThan(0);
       } catch (err) {
-        expect(err).toBeInstanceOf(AuthTokenMissingError);
+        // Either HTTPToolkit is not running (distinct error) or running but token unreadable
+        expect(
+          err instanceof HttpToolkitNotRunningError || err instanceof AuthTokenMissingError,
+        ).toBe(true);
       }
     });
 
-    it('throws with helpful message mentioning replay tools and README', () => {
-      delete process.env['HTK_SERVER_TOKEN'];
-      try {
-        requireAuthToken();
-      } catch (err) {
-        if (err instanceof AuthTokenMissingError) {
-          expect(err.message).toMatch(/HTK_SERVER_TOKEN is required for replay tools/);
-          expect(err.message).toMatch(/README#authentication/);
-        }
-      }
+    it('does not throw NotRunning when env var is explicitly set', () => {
+      process.env['HTK_SERVER_TOKEN'] = 'explicit-token';
+      // Should never throw NotRunning — env var bypasses process detection
+      expect(() => requireAuthToken()).not.toThrow();
+      expect(requireAuthToken()).toBe('explicit-token');
     });
   });
 
@@ -117,6 +114,28 @@ describe('auth', () => {
       // Second invalidation should not retry
       const result = invalidateTokenCache();
       expect(result).toBeNull();
+    });
+  });
+
+  describe('HttpToolkitNotRunningError', () => {
+    it('has code HTTPTOOLKIT_NOT_RUNNING', () => {
+      const err = new HttpToolkitNotRunningError();
+      expect(err.code).toBe('HTTPTOOLKIT_NOT_RUNNING');
+    });
+
+    it('message tells user to start HTTPToolkit', () => {
+      const err = new HttpToolkitNotRunningError();
+      expect(err.message).toMatch(/does not appear to be running/);
+      expect(err.message).toMatch(/Start HTTPToolkit/);
+    });
+
+    it('toErrorPayload returns structured payload with action field', () => {
+      const err = new HttpToolkitNotRunningError();
+      const payload = err.toErrorPayload();
+      expect(payload.error).toBe('HTTPTOOLKIT_NOT_RUNNING');
+      expect(payload.action).toMatch(/Start HTTPToolkit/);
+      expect(payload.tools_affected).toEqual(['replay_request', 'replay_raw']);
+      expect(payload.tools_still_available).toContain('events_list');
     });
   });
 
