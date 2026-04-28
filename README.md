@@ -291,11 +291,89 @@ Auto-rotates at 100MB. Cannot be disabled.
 
 Default 10 requests/second per target host. Configurable via `REPLAY_RATE_LIMIT_RPS`.
 
+## Working with LLM clients
+
+The MCP returns structured tool results to whatever LLM client you've connected. Some practical notes about LLM behavior that affect how you should use these tools, especially for security work.
+
+### LLM memory and tool results
+
+LLM clients like Claude Desktop maintain persistent conversation memory across sessions. When you call an MCP tool, the LLM has two relevant context sources: the actual tool result, and whatever it remembers from prior conversations. Default LLM behavior is to combine them into a "helpful" response — which can mean stating memory-derived claims with the same authority as tool-anchored facts.
+
+Concrete example: ask `server_status` and the LLM may add commentary like *"and your previous engagement chain was X"* — where the engagement detail came from memory, not from the tool. The response looks coherent but mixes verified facts with remembered context.
+
+This matters for security testing where you need clean separation between *what the data shows* and *what the LLM remembers*. Two patterns help.
+
+#### Pattern 1 — Constrain to tool output only
+
+For factual MCP queries where you want only what the tool returned:
+
+> Call the `<tool_name>` tool from the httptoolkit MCP connector. Show me only the fields the tool actually returned. Do not interpret, do not connect to other context, do not infer.
+
+This phrasing reliably produces clean tool-anchored responses. Use it for any query where you're verifying behavior or pulling raw data.
+
+#### Pattern 2 — Demand provenance
+
+For analytical queries where you want the LLM's reasoning but need to separate it from raw data:
+
+> Use the MCP tools as needed. For each statement in your response, indicate whether it came from a tool result (label `[from MCP]`) or from your memory or inference (label `[from memory]` or `[inference]`).
+
+This forces the LLM to internally separate sources before writing. You can review and weigh each claim.
+
+### Recommendations
+
+- For client engagements where data segregation matters, run security testing in a dedicated LLM session with memory disabled, or in a fresh conversation.
+- Be explicit about which MCP connector to use when calling tools (e.g., `from the httptoolkit MCP connector`) — this avoids ambiguity if you have multiple MCPs configured.
+- Treat LLM responses as analyst notes, not findings. Cross-reference any actionable claim against the underlying tool output before acting on it.
+
+This isn't specific to our MCP. It's good practice for any LLM-driven security workflow.
+
 ## Known limitations
 
 - **`/client/send` wire format is unverified.** Phase 1 inferred encoding details from HTTPToolkit's source rather than testing end-to-end with a real auth token. Replay tools should work, but if you observe garbled response bodies or unexpected send failures, please file an issue with details. Tracking: [#7](https://github.com/NinjaScout77/httptoolkit-mcp/issues/7).
 - **No automatic token discovery.** See [Authentication](#authentication) above.
 - **No persistent capture history beyond what HTTPToolkit holds.** All read operations query HTTPToolkit's own event store; restarting HTTPToolkit clears it.
+
+## Troubleshooting
+
+### "Cannot connect to HTTPToolkit via socket at /tmp/httptoolkit-XXX/..." on macOS
+
+**Symptom:** The MCP tools fail with errors like `Cannot connect to HTTPToolkit via socket at /tmp/httptoolkit-501/httptoolkit-ctl.sock` even though HTTPToolkit's desktop app is running.
+
+**Cause:** Some LLM clients (notably Claude Desktop, possibly others) launch MCP child processes with sanitized environments that don't propagate `$TMPDIR`. On macOS this causes the MCP to compute the wrong socket path.
+
+**Fix:** Upgrade to `@ninjascout77/httptoolkit-mcp@>=0.1.1` if available. If you must use an earlier version, inject `TMPDIR` via your LLM client's MCP config:
+
+```json
+{
+  "mcpServers": {
+    "httptoolkit": {
+      "command": "/opt/homebrew/bin/node",
+      "args": ["/path/to/httptoolkit-mcp/dist/index.js"],
+      "env": {
+        "TMPDIR": "/var/folders/.../T/"
+      }
+    }
+  }
+}
+```
+
+Get your actual `TMPDIR` value with `getconf DARWIN_USER_TEMP_DIR`.
+
+### MCP not appearing in Claude Desktop's connectors list
+
+**Cause:** Usually a JSON syntax error in `claude_desktop_config.json` or a wrong path to `node`/`dist/index.js`.
+
+**Fix:**
+1. Validate the config is valid JSON: `cat ~/Library/Application\ Support/Claude/claude_desktop_config.json | python3 -m json.tool`
+2. Confirm the absolute path to your node binary: `which node`
+3. Confirm `dist/index.js` exists in your repo: `ls /path/to/httptoolkit-mcp/dist/index.js`
+4. Check the MCP launch log: `tail -50 ~/Library/Logs/Claude/mcp-server-httptoolkit.log`
+
+### "replayAvailable: false" on a Pro account
+
+**Cause:** Replay tools require both an HTTPToolkit Pro license AND `HTK_SERVER_TOKEN` set in the MCP's environment. The desktop app generates a token internally but doesn't currently expose it externally — see [issue #6](https://github.com/NinjaScout77/httptoolkit-mcp/issues/6) for the tracking.
+
+**Workaround:** For replay-driven security testing today, use Burp upstream as documented in [Burp Suite upstream](#burp-suite-upstream). Read tools work without a token.
 
 ## Credits
 
