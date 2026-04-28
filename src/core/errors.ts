@@ -110,6 +110,37 @@ export class OperationFailedError extends HttpToolkitMcpError {
   }
 }
 
+export class HttpToolkitNotRunningError extends HttpToolkitMcpError {
+  public readonly tools_affected = ['replay_request', 'replay_raw'];
+  public readonly tools_still_available = [
+    'events_list',
+    'events_get',
+    'events_body',
+    'server_status',
+    'interceptors_list',
+  ];
+
+  constructor() {
+    super(
+      'HTTPToolkit desktop app does not appear to be running. ' +
+        'Start HTTPToolkit, then retry. ' +
+        'Read tools (events, server_status) may still work if a previous session left the socket active.',
+      'HTTPTOOLKIT_NOT_RUNNING',
+    );
+    this.name = 'HttpToolkitNotRunningError';
+  }
+
+  toErrorPayload(): Record<string, unknown> {
+    return {
+      error: this.code,
+      message: this.message,
+      action: 'Start HTTPToolkit desktop app, then retry.',
+      tools_affected: this.tools_affected,
+      tools_still_available: this.tools_still_available,
+    };
+  }
+}
+
 export class SocketConnectionError extends HttpToolkitMcpError {
   constructor(public readonly socketPath: string) {
     super(
