@@ -1,0 +1,70 @@
+name: Build native helpers
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: macos-13
+            platform: darwin
+            arch: x64
+            src: native/getenv_darwin.c
+          - os: macos-14
+            platform: darwin
+            arch: arm64
+            src: native/getenv_darwin.c
+          - os: ubuntu-latest
+            platform: linux
+            arch: x64
+            src: native/getenv_linux.c
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build native helper
+        run: |
+          mkdir -p prebuilds/${{ matrix.platform }}-${{ matrix.arch }}
+          cc -O2 -Wall -Wextra -Werror \
+            -o prebuilds/${{ matrix.platform }}-${{ matrix.arch }}/htk-getenv \
+            ${{ matrix.src }}
+          chmod 755 prebuilds/${{ matrix.platform }}-${{ matrix.arch }}/htk-getenv
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: prebuild-${{ matrix.platform }}-${{ matrix.arch }}
+          path: prebuilds/${{ matrix.platform }}-${{ matrix.arch }}/htk-getenv
+
+  package:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all prebuilds
+        uses: actions/download-artifact@v4
+        with:
+          path: prebuilds-raw
+
+      - name: Arrange prebuilds
+        run: |
+          for dir in prebuilds-raw/prebuild-*; do
+            platform_arch=$(basename "$dir" | sed 's/prebuild-//')
+            mkdir -p "prebuilds/$platform_arch"
+            cp "$dir/htk-getenv" "prebuilds/$platform_arch/htk-getenv"
+            chmod 755 "prebuilds/$platform_arch/htk-getenv"
+          done
+          find prebuilds -type f -ls
+
+      - name: Upload combined prebuilds
+        uses: actions/upload-artifact@v4
+        with:
+          name: prebuilds-all
+          path: prebuilds/

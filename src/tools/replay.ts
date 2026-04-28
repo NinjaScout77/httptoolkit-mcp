@@ -2,8 +2,8 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { randomUUID } from 'node:crypto';
 
-import { AuthTokenMissingError } from '../core/errors.js';
-import { requireAuthToken } from '../httptoolkit/auth.js';
+import { AuthTokenMissingError, HttpToolkitError } from '../core/errors.js';
+import { requireAuthToken, invalidateTokenCache } from '../httptoolkit/auth.js';
 import { executeOperation } from '../httptoolkit/bridge.js';
 import { sendRequest, probeUpstream } from '../httptoolkit/send.js';
 import { applyMutations } from '../core/mutations.js';
@@ -175,6 +175,28 @@ export function registerReplayTools(server: McpServer): void {
             isError: true,
           };
         }
+        // Handle stale token: HTTPToolkit returns 403 "Valid token required" when
+        // the server has restarted and our cached token is stale.
+        if (err instanceof HttpToolkitError && err.status === 403 && /valid token/i.test(err.message)) {
+          const newToken = invalidateTokenCache();
+          if (newToken) {
+            log.info('Token refreshed after 401 — retry not automatic, please retry the tool call');
+          }
+          return {
+            content: [
+              {
+                type: 'text' as const,
+                text: JSON.stringify({
+                  error: 'AUTH_TOKEN_STALE',
+                  message: newToken
+                    ? 'Auth token was stale (HTTPToolkit may have restarted). A new token has been detected. Please retry this tool call.'
+                    : 'Auth token is invalid and auto-detection failed. Set HTK_SERVER_TOKEN manually or restart HTTPToolkit.',
+                }, null, 2),
+              },
+            ],
+            isError: true,
+          };
+        }
         const message = err instanceof Error ? err.message : String(err);
         const code = (err as { code?: string }).code ?? 'UNKNOWN';
         log.error('replay_request failed', { error: message, code });
@@ -307,6 +329,26 @@ export function registerReplayTools(server: McpServer): void {
         if (err instanceof AuthTokenMissingError) {
           return {
             content: [{ type: 'text' as const, text: JSON.stringify(err.toErrorPayload(), null, 2) }],
+            isError: true,
+          };
+        }
+        if (err instanceof HttpToolkitError && err.status === 403 && /valid token/i.test(err.message)) {
+          const newToken = invalidateTokenCache();
+          if (newToken) {
+            log.info('Token refreshed after 401 — retry not automatic, please retry the tool call');
+          }
+          return {
+            content: [
+              {
+                type: 'text' as const,
+                text: JSON.stringify({
+                  error: 'AUTH_TOKEN_STALE',
+                  message: newToken
+                    ? 'Auth token was stale (HTTPToolkit may have restarted). A new token has been detected. Please retry this tool call.'
+                    : 'Auth token is invalid and auto-detection failed. Set HTK_SERVER_TOKEN manually or restart HTTPToolkit.',
+                }, null, 2),
+              },
+            ],
             isError: true,
           };
         }

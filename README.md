@@ -42,9 +42,6 @@ Add to your MCP config (`~/.claude.json` or project `.mcp.json`):
     "httptoolkit": {
       "command": "npx",
       "args": ["-y", "@ninjascout77/httptoolkit-mcp"],
-      "env": {
-        "HTK_SERVER_TOKEN": "<your-token-here>"
-      }
     }
   }
 }
@@ -59,45 +56,44 @@ Add to `claude_desktop_config.json`:
   "mcpServers": {
     "httptoolkit": {
       "command": "npx",
-      "args": ["-y", "@ninjascout77/httptoolkit-mcp"],
-      "env": {
-        "HTK_SERVER_TOKEN": "<your-token-here>"
-      }
+      "args": ["-y", "@ninjascout77/httptoolkit-mcp"]
     }
   }
 }
 ```
+
+No `HTK_SERVER_TOKEN` needed in most cases — the MCP auto-detects it from the running HTTPToolkit desktop app.
 
 ## Authentication
 
 HTTPToolkit uses two communication channels:
 
 1. **Unix socket** (automatic, no config needed) — used for read tools
-2. **HTTP API** (requires `HTK_SERVER_TOKEN`) — used for replay tools
+2. **HTTP API** (requires auth token) — used for replay tools
 
 **Read tools work immediately** with no configuration as long as HTTPToolkit is running.
 
-### Replay tools — the auth situation today
+### Replay tools — auto-detection
 
-The replay tools (`replay_request`, `replay_raw`) call HTTPToolkit's HTTP API on port 45457, which requires the `HTK_SERVER_TOKEN` Bearer token.
+The replay tools (`replay_request`, `replay_raw`) call HTTPToolkit's HTTP API on port 45457, which requires a Bearer token. The MCP auto-detects this token from the running HTTPToolkit desktop app:
 
-**The honest state of token access:**
+1. **`HTK_SERVER_TOKEN` env var** — explicit override, always takes priority
+2. **Auto-detection** — reads the token from the HTTPToolkit server process's OS-level environment via `sysctl` (macOS) or `/proc` (Linux). The desktop app generates a random token per session and passes it to the server process. Even though the server deletes the variable from its Node.js heap, the OS kernel retains the initial process environment.
+3. If neither works, replay tools return a clear error explaining what to do.
 
-When HTTPToolkit's desktop app starts, it generates a random per-session token, sets it as `HTK_SERVER_TOKEN` in the server process environment, then deletes the variable from its own environment. The token is held inside the Electron renderer process and is not currently exposed via any public API. This means there is no zero-friction way to extract it from a running desktop session.
+**This means replay typically "just works"** — start HTTPToolkit desktop, start the MCP, done.
 
-**What works today:**
+### When auto-detection doesn't work
 
-- **Run `httptoolkit-server` standalone with a known token.** Skip the desktop app, run the bundled server directly:
-  ```
-  HTK_SERVER_TOKEN=my-known-token httptoolkit-server start
-  ```
-  Then start the MCP with the same token. You lose the desktop UI but gain reproducible auth.
+- **Windows** — not yet supported. Set `HTK_SERVER_TOKEN` manually.
+- **Linux ARM64** — prebuilt binary not yet shipped. Set `HTK_SERVER_TOKEN` manually.
+- **Restricted environments** — if your OS blocks reading other processes' environment (rare), set `HTK_SERVER_TOKEN` manually.
 
-- **Patched desktop builds.** Some users build HTTPToolkit from source with the env-var deletion line removed. We do not endorse this; mentioned only for completeness.
+To set the token manually, run the server standalone: `HTK_SERVER_TOKEN=my-token httptoolkit-server start`, then pass the same token to the MCP config.
 
-**Tracking:** [#6](https://github.com/NinjaScout77/httptoolkit-mcp/issues/6) tracks adding automatic token discovery once HTTPToolkit exposes a way to do this.
+### A note on the token's security model
 
-If you only need read tools (capture inspection, listing events, fetching bodies), you do not need any of this. Just install and run.
+The `HTK_SERVER_TOKEN` is a **local-only authenticator**, not a cryptographic secret. It prevents other local processes from accidentally controlling your HTTPToolkit instance. The real security boundary is your OS user account — any same-user process can read the token via the same mechanism the MCP uses. This is by design: HTTPToolkit is a local development tool, and its threat model assumes a trusted local user.
 
 ## Configuration
 
@@ -329,8 +325,7 @@ This isn't specific to our MCP. It's good practice for any LLM-driven security w
 
 ## Known limitations
 
-- **`/client/send` wire format is unverified.** Phase 1 inferred encoding details from HTTPToolkit's source rather than testing end-to-end with a real auth token. Replay tools should work, but if you observe garbled response bodies or unexpected send failures, please file an issue with details. Tracking: [#7](https://github.com/NinjaScout77/httptoolkit-mcp/issues/7).
-- **No automatic token discovery.** See [Authentication](#authentication) above.
+- **Token auto-detection requires macOS (x64/ARM64) or Linux x64.** Windows and Linux ARM64 are not yet supported — set `HTK_SERVER_TOKEN` manually on those platforms.
 - **No persistent capture history beyond what HTTPToolkit holds.** All read operations query HTTPToolkit's own event store; restarting HTTPToolkit clears it.
 
 ## Troubleshooting
@@ -369,11 +364,14 @@ Get your actual `TMPDIR` value with `getconf DARWIN_USER_TEMP_DIR`.
 3. Confirm `dist/index.js` exists in your repo: `ls /path/to/httptoolkit-mcp/dist/index.js`
 4. Check the MCP launch log: `tail -50 ~/Library/Logs/Claude/mcp-server-httptoolkit.log`
 
-### "replayAvailable: false" on a Pro account
+### "replayAvailable: false" even though HTTPToolkit is running
 
-**Cause:** Replay tools require both an HTTPToolkit Pro license AND `HTK_SERVER_TOKEN` set in the MCP's environment. The desktop app generates a token internally but doesn't currently expose it externally — see [issue #6](https://github.com/NinjaScout77/httptoolkit-mcp/issues/6) for the tracking.
+**Cause:** Token auto-detection failed. This can happen if:
+- You're on Windows or Linux ARM64 (auto-detection not yet supported)
+- The HTTPToolkit server process exited or restarted between detection attempts
+- Your OS restricts reading other processes' environment
 
-**Workaround:** For replay-driven security testing today, use Burp upstream as documented in [Burp Suite upstream](#burp-suite-upstream). Read tools work without a token.
+**Fix:** Set `HTK_SERVER_TOKEN` manually in your MCP config. To get the token, run `httptoolkit-server start --token my-known-token` instead of using the desktop app, then use the same token in your MCP config.
 
 ## Credits
 
