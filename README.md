@@ -315,6 +315,21 @@ For analytical queries where you want the LLM's reasoning but need to separate i
 
 This forces the LLM to internally separate sources before writing. You can review and weigh each claim.
 
+### LLMs may hallucinate setup steps
+
+When you ask an LLM how to configure or unblock a tool, it may invent file paths, environment variable names, or configuration steps that sound plausible but don't exist on your system. This is distinct from memory bleed — the LLM isn't pulling from your past conversations, it's filling gaps in its knowledge with plausible-sounding inventions.
+
+A real example: when an LLM was asked how to enable replay tools in `httptoolkit-mcp`, it suggested reading the token from `~/Library/Preferences/httptoolkit/auth-token`. That file does not exist — HTTPToolkit holds the token only in process memory and never writes it to disk. The LLM produced a confident, well-formatted answer that would have wasted setup time.
+
+How to defend against this:
+
+- Verify any file path the LLM mentions before reading or writing to it (`ls` it first).
+- Verify any command the LLM tells you to run by checking the binary exists (`which <command>`).
+- When the LLM gives setup advice, ask: *"Can you point me to where this is documented?"* — forces the LLM to either cite a real source or admit it doesn't know.
+- For security tools specifically, prefer the project's own README and CHANGELOG over LLM-generated setup instructions. We document the verified path; the LLM may not have it.
+
+This applies to any LLM-driven workflow with tools that have specific file paths or configuration patterns. Not specific to our MCP — it's a category of risk worth knowing about.
+
 ### Recommendations
 
 - For client engagements where data segregation matters, run security testing in a dedicated LLM session with memory disabled, or in a fresh conversation.
@@ -334,9 +349,14 @@ This isn't specific to our MCP. It's good practice for any LLM-driven security w
 
 **Symptom:** The MCP tools fail with errors like `Cannot connect to HTTPToolkit via socket at /tmp/httptoolkit-501/httptoolkit-ctl.sock` even though HTTPToolkit's desktop app is running.
 
-**Cause:** Some LLM clients (notably Claude Desktop, possibly others) launch MCP child processes with sanitized environments that don't propagate `$TMPDIR`. On macOS this causes the MCP to compute the wrong socket path.
+**Cause:** Some LLM clients launch MCP child processes with sanitized environments that don't propagate `$TMPDIR`. On macOS this causes the MCP to compute the wrong socket path. Verified behavior:
 
-**Fix:** Upgrade to `@ninjascout77/httptoolkit-mcp@>=0.1.1` if available. If you must use an earlier version, inject `TMPDIR` via your LLM client's MCP config:
+- **Claude Desktop:** strips `$TMPDIR` (affected on macOS in versions before the fix)
+- **Claude Code (CLI):** propagates `$TMPDIR` correctly (not affected)
+
+Other clients are likely affected if they use similar Electron / GUI launching patterns.
+
+**Fix:** Upgrade to `@ninjascout77/httptoolkit-mcp@>=0.2.0`. The fix resolves the macOS socket path via `getconf DARWIN_USER_TEMP_DIR` and is not affected by `$TMPDIR` propagation. If you must use an earlier version, inject `TMPDIR` via your LLM client's MCP config:
 
 ```json
 {
