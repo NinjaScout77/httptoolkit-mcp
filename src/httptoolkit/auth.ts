@@ -1,5 +1,5 @@
-import { AuthTokenMissingError } from '../core/errors.js';
-import { autoDetectToken } from '../util/process-env.js';
+import { AuthTokenMissingError, HttpToolkitNotRunningError } from '../core/errors.js';
+import { autoDetectToken, findServerPid } from '../util/process-env.js';
 import { createLogger } from '../util/logger.js';
 
 const log = createLogger('auth');
@@ -61,6 +61,11 @@ export function resolveAuthToken(): string | null {
 export function requireAuthToken(): string {
   const token = resolveAuthToken();
   if (!token) {
+    // Distinguish "HTK not running" from "running but token not found"
+    const serverPid = findServerPid();
+    if (serverPid === null) {
+      throw new HttpToolkitNotRunningError();
+    }
     throw new AuthTokenMissingError();
   }
   return token;

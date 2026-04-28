@@ -2,7 +2,11 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { randomUUID } from 'node:crypto';
 
-import { AuthTokenMissingError, HttpToolkitError } from '../core/errors.js';
+import {
+  AuthTokenMissingError,
+  HttpToolkitError,
+  HttpToolkitNotRunningError,
+} from '../core/errors.js';
 import { requireAuthToken, invalidateTokenCache } from '../httptoolkit/auth.js';
 import { executeOperation } from '../httptoolkit/bridge.js';
 import { sendRequest, probeUpstream } from '../httptoolkit/send.js';
@@ -169,6 +173,14 @@ export function registerReplayTools(server: McpServer): void {
           content: [{ type: 'text' as const, text: JSON.stringify(output, null, 2) }],
         };
       } catch (err) {
+        if (err instanceof HttpToolkitNotRunningError) {
+          return {
+            content: [
+              { type: 'text' as const, text: JSON.stringify(err.toErrorPayload(), null, 2) },
+            ],
+            isError: true,
+          };
+        }
         if (err instanceof AuthTokenMissingError) {
           return {
             content: [{ type: 'text' as const, text: JSON.stringify(err.toErrorPayload(), null, 2) }],
@@ -326,6 +338,14 @@ export function registerReplayTools(server: McpServer): void {
           content: [{ type: 'text' as const, text: JSON.stringify(output, null, 2) }],
         };
       } catch (err) {
+        if (err instanceof HttpToolkitNotRunningError) {
+          return {
+            content: [
+              { type: 'text' as const, text: JSON.stringify(err.toErrorPayload(), null, 2) },
+            ],
+            isError: true,
+          };
+        }
         if (err instanceof AuthTokenMissingError) {
           return {
             content: [{ type: 'text' as const, text: JSON.stringify(err.toErrorPayload(), null, 2) }],
