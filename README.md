@@ -1,4 +1,4 @@
-# @ninjascout77/httptoolkit-mcp
+httptoolkit-mcp
 
 > Drive HTTPToolkit from any MCP-compatible LLM client
 
