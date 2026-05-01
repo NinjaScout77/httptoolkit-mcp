@@ -1,123 +1,110 @@
+# httptoolkit-mcp
+
+**Drive HTTPToolkit from any MCP-compatible LLM client. Built for security testing on traffic that HTTPToolkit captures — mobile apps, electron apps, browsers, terminals.**
+
+[![CI](https://github.com/NinjaScout77/httptoolkit-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/NinjaScout77/httptoolkit-mcp/actions)
+[![npm](https://img.shields.io/npm/v/@ninjascout77/httptoolkit-mcp.svg)](https://www.npmjs.com/package/@ninjascout77/httptoolkit-mcp)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
+---
+
 <p align="center">
-  <h1 align="center">httptoolkit-mcp</h1>
-  <p align="center">
-    <strong>The missing bridge between LLMs and HTTP security testing</strong>
-  </p>
-  <p align="center">
-    <a href="https://github.com/NinjaScout77/httptoolkit-mcp/actions/workflows/ci.yml"><img src="https://github.com/NinjaScout77/httptoolkit-mcp/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-    <a href="https://www.npmjs.com/package/@ninjascout77/httptoolkit-mcp"><img src="https://img.shields.io/npm/v/@ninjascout77/httptoolkit-mcp" alt="npm version"></a>
-    <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
-    <a href="https://nodejs.org"><img src="https://img.shields.io/badge/node-%3E%3D20-brightgreen" alt="Node >= 20"></a>
-    <a href="https://modelcontextprotocol.io"><img src="https://img.shields.io/badge/MCP-compatible-blue" alt="MCP Compatible"></a>
-  </p>
+  <img src="assets/architecture.svg" alt="httptoolkit-mcp architecture" width="100%">
 </p>
 
 ---
 
-> **Capture traffic. Ask your LLM to test it. Get results.**
->
-> `httptoolkit-mcp` is a production-grade [MCP server](https://modelcontextprotocol.io) that lets any MCP-compatible LLM client — Claude Code, Claude Desktop, Cursor, Codex — drive [HTTPToolkit](https://httptoolkit.com) for **automated API security testing with replay, mutation, and audit**.
+## Is this for you?
+
+Read this first. Five minutes here saves the wrong user from installing the wrong tool.
+
+### Use this if
+
+- You're already using HTTPToolkit because of its mobile interception capabilities — one-click Android cert injection, Flutter SSL pinning bypass, per-app interception on rooted devices.
+- You're testing Electron apps and want HTTPToolkit's electron interceptor to launch them with the proxy attached.
+- You're using HTTPToolkit's terminal interceptor to capture CLI tool traffic (kubectl, aws-cli, language SDKs) and want LLM-driven analysis.
+- You want an LLM to do systematic security testing — BOLA enumeration, auth header stripping, body field privilege escalation, SSRF probes, path traversal — on traffic captured by any HTTPToolkit interceptor.
+- You want LLM-driven analysis with an audit trail, scope guards, and rate limiting for unattended operation.
+
+### Don't use this if
+
+- You're testing a regular web app or API and have Burp Suite Professional. Burp's Repeater, Intruder, and Scanner are unmatched for web work, and PortSwigger's [official Burp MCP](https://github.com/PortSwigger/mcp-server) gives the LLM access to all of it. That's the right tool for that job.
+- You don't have HTTPToolkit installed and don't want to install it. We assume HTTPToolkit is your proxy — we don't replace it.
+
+### "But I want both Burp and HTTPToolkit"
+
+Common and reasonable. See [§ Burp Suite integration](#burp-suite-integration). Short version: HTTPToolkit handles device-side capture (where it's better), Burp handles tester-side analysis (where it's better), our MCP routes through both.
 
 ---
 
-## Why This Exists
+## What this does
 
-HTTPToolkit's [built-in MCP](https://httptoolkit.com/docs/) gives LLMs **read-only** access to captured traffic. That's useful for debugging, but security testers need more:
+Seven tools across three categories, all working today on macOS and Linux.
 
-| Capability | HTTPToolkit Built-in MCP | **httptoolkit-mcp** |
-|:-----------|:------------------------:|:-------------------:|
-| List & inspect captured traffic | Yes | **Yes** |
-| View request/response bodies | Yes | **Yes** |
-| **Replay requests with mutations** | No | **Yes** |
-| **Send arbitrary requests** | No | **Yes** |
-| **Scope allowlist (host restrictions)** | No | **Yes** |
-| **Forensic audit log (JSONL)** | No | **Yes** |
-| **Per-host rate limiting** | No | **Yes** |
-| **Burp Suite upstream routing** | No | **Yes** |
-| **Auto-detect auth token** | N/A | **Yes** |
+**Read tools** — work zero-config the moment HTTPToolkit's desktop app is running. No auth token. No setup.
+- `events_list` — list captured traffic with filtering (HTTPToolkit's native filter syntax: `hostname=...`, `method=POST`, `status>=400`)
+- `events_get` — full headers, status, timing for one event
+- `events_body` — request or response body with offset/length, automatic binary detection (returns base64 for non-text content)
 
-**This is the tool that turns "capture and inspect" into "capture, mutate, replay, and report."**
+**Server tools** — also zero-config.
+- `server_status` — proxy port, cert path, version, replay availability
+- `interceptors_list` — what HTTPToolkit can intercept on this machine
 
----
+**Replay tools** — fire mutated requests through HTTPToolkit's send pipeline. Token is auto-discovered from the running HTTPToolkit process on macOS and Linux.
+- `replay_request` — fetch a captured event by ID, apply mutations (header swaps, body field flips, path/query changes), fire through HTTPToolkit. Replays go to the target and the response comes back to the LLM.
+- `replay_raw` — fire an arbitrary request from scratch (Burp Repeater equivalent).
 
-## What Makes This Different
+### What it doesn't have, by design
 
-### For Pentesters & Security Engineers
+- No autonomous "find vulnerabilities" tool. The LLM is the agent; we're the toolkit. We provide sharp primitives, the LLM composes them.
+- No interceptor wrappers for every interceptor type. Use HTTPToolkit's UI to start interception, or call `interceptors_list` and the underlying activation. We don't add a tool per browser/runtime.
+- No HTTPToolkit replacement. We talk to HTTPToolkit; we don't reimplement what it does.
 
-Most MCP servers give LLMs read access to data. This one gives them **controlled write access** to HTTP traffic — the ability to replay captured requests with surgical mutations, gated by safety primitives that prevent the LLM from going rogue.
+### What's coming
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                     YOUR TESTING WORKFLOW                        │
-│                                                                 │
-│   Mobile App / Browser / API Client                             │
-│          │                                                      │
-│          ▼                                                      │
-│   ┌─────────────────┐    ┌──────────────────┐                  │
-│   │  HTTPToolkit     │───▶│  Burp Suite      │───▶ Target API  │
-│   │  (capture proxy) │    │  (optional)      │                  │
-│   └────────┬────────┘    └──────────────────┘                  │
-│            │                                                    │
-│            ▼                                                    │
-│   ┌─────────────────────────────────────┐                      │
-│   │  httptoolkit-mcp                    │                      │
-│   │                                     │                      │
-│   │  ► Read captured traffic            │                      │
-│   │  ► Replay with mutations            │  ◄── LLM Client     │
-│   │  ► Scope allowlist enforcement      │      (Claude Code,   │
-│   │  ► Rate limiting                    │       Cursor, etc.)  │
-│   │  ► Audit logging                    │                      │
-│   └─────────────────────────────────────┘                      │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-### The Mutation Engine
-
-The core differentiator. JSON-pointer-style mutations let the LLM surgically modify any part of a captured request before replaying it:
-
-| Mutation Key | What It Does | Security Use Case |
-|:-------------|:-------------|:------------------|
-| `headers.Authorization` | Remove/replace auth header | Auth bypass testing |
-| `headers.X-Forwarded-For` | Inject IP header | SSRF / IP restriction bypass |
-| `url.path.<n>` | Swap a path segment | IDOR (e.g., `/users/1` to `/users/2`) |
-| `url.query.<name>` | Modify query param | Parameter tampering |
-| `method` | Change HTTP method | Verb tampering (GET to DELETE) |
-| `body.<field>` | Patch JSON body field | Privilege escalation (`is_admin: true`) |
-| `body.raw` | Replace entire body | Mass assignment testing |
-| `url.host` | Change target host | SSRF probing |
-
-**All mutations are validated before firing.** Unknown paths, malformed URLs, and invalid methods are rejected with clear error messages — not silent failures.
-
-### Safety by Default
-
-This MCP runs unattended in LLM workflows. Three safety layers prevent accidents:
-
-> **Scope Allowlist** — `REPLAY_ALLOWLIST="*.example.com,api.test.local"` restricts which hosts the LLM can target. If unset, replays are allowed but every call logs a warning.
-
-> **Rate Limiter** — 10 req/s per host by default. Token bucket with queue depth 100. Prevents the LLM from accidentally DoS'ing a target.
-
-> **Audit Log** — Every replay writes to `~/.httptoolkit-mcp/audit.jsonl`. Cannot be disabled. Auto-rotates at 100MB. Your forensic record of what the LLM actually fired.
+Live capture subscription, findings tracking with Markdown/JSON export, batch replay, and Windows replay support are planned for `1.0.0`.
 
 ---
 
-## Quick Start
+## Quick start
 
-### 1. Install
+Three steps, total time about two minutes.
+
+### 1. Install HTTPToolkit
+
+Download from [httptoolkit.com](https://httptoolkit.com). Free tier works for read tools. Pro tier is required for replay (HTTPToolkit's policy — see [§ Tier requirements](#tier-requirements)).
+
+### 2. Install httptoolkit-mcp
 
 ```bash
 npm install -g @ninjascout77/httptoolkit-mcp
-# or run directly without installing
+```
+
+Or run directly without installing:
+
+```bash
 npx -y @ninjascout77/httptoolkit-mcp
 ```
 
-> **Requirements:** Node.js >= 20 and [HTTPToolkit desktop app](https://httptoolkit.com) running.
+### 3. Register with your LLM client
 
-### 2. Configure Your LLM Client
+#### Claude Code
 
-<details>
-<summary><strong>Claude Code</strong></summary>
+```bash
+claude mcp add httptoolkit --scope user -- npx -y @ninjascout77/httptoolkit-mcp
+```
 
-Add to `~/.claude.json` or project `.mcp.json`:
+Verify:
+
+```bash
+claude mcp list
+```
+
+`httptoolkit: ✓ Connected` should appear.
+
+#### Claude Desktop
+
+Edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
 
 ```json
 {
@@ -129,243 +116,100 @@ Add to `~/.claude.json` or project `.mcp.json`:
   }
 }
 ```
-</details>
 
-<details>
-<summary><strong>Claude Desktop</strong></summary>
-
-Add to `claude_desktop_config.json`:
+If `npx` isn't in PATH for GUI apps (common on macOS), use the absolute path:
 
 ```json
 {
   "mcpServers": {
     "httptoolkit": {
-      "command": "npx",
-      "args": ["-y", "@ninjascout77/httptoolkit-mcp"]
+      "command": "/opt/homebrew/bin/node",
+      "args": ["/path/to/httptoolkit-mcp/dist/index.js"]
     }
   }
 }
 ```
-</details>
 
-<details>
-<summary><strong>Cursor / Other MCP Clients</strong></summary>
+Fully quit and reopen Claude Desktop. The connector should appear in settings.
 
-Any MCP-compatible client works. Configure the server command as:
+### 4. First query — verify it works
 
-```
-npx -y @ninjascout77/httptoolkit-mcp
-```
+In your LLM client:
 
-No additional configuration needed — token auto-detection handles authentication.
-</details>
+> Use the httptoolkit MCP. Call server_status and show me only the fields the tool returned. Do not interpret.
 
-### 3. Start Testing
-
-```
-You:  "List the last 10 API requests"
-LLM:  → events_list({ limit: 10 })
-
-You:  "Take that POST to /api/users and replay it without the auth header"
-LLM:  → replay_request({ event_id: "abc", mutations: { "headers.Authorization": null }, description: "Auth bypass test" })
-
-You:  "Now try accessing user 2's profile with user 1's session"
-LLM:  → replay_request({ event_id: "abc", mutations: { "url.path.2": "user-2-id" }, description: "IDOR test" })
-```
-
-**That's it.** The MCP auto-detects the auth token from the running HTTPToolkit instance. No manual token extraction needed.
+You should see proxy port, cert path, and `replayAvailable: true` (if HTTPToolkit is running and you have Pro). If `replayAvailable: false`, you don't have Pro or auto-detection couldn't find the running server — see [§ Troubleshooting](#troubleshooting).
 
 ---
 
-## Tools Reference
+## Try it — example prompts
 
-### Read Tools — No Auth Required
+These prompts work as written. Copy them into Claude Code or Claude Desktop with the MCP connected and HTTPToolkit running. Capture some traffic first by using your target app for a minute, then run.
 
-These work immediately when HTTPToolkit is running. Zero configuration.
+### 1. Survey the captured surface
 
-| Tool | Description |
-|:-----|:------------|
-| **`events_list`** | List captured HTTP exchanges with filtering and pagination. Filter syntax matches HTTPToolkit's UI search bar. |
-| **`events_get`** | Get full event outline — headers, status code, timing, source — without body content. |
-| **`events_body`** | Get request or response body. Binary content returned as base64. Supports offset/length for large bodies. |
-| **`server_status`** | HTTPToolkit proxy config, connection status, replay availability, and MCP version. |
-| **`interceptors_list`** | Available interceptors (browser, terminal, system proxy, etc.) and their activation status. |
+> Use the httptoolkit MCP. List the most recent 50 captured events. Group them by hostname and tell me which hostnames appear most often. Show only what the tools returned.
 
-**Filter examples for `events_list`:**
-```
-"method=POST"                              — POST requests only
-"status>=400"                              — error responses
-"hostname*=api contains(password)"         — API hosts with "password" in body
-```
+What this does: maps the API surface of whatever app you're proxying. First step in any engagement.
 
-### Replay Tools — Auto-Detected Auth
+### 2. Find unauthenticated endpoints
 
-These require the HTTPToolkit auth token, which is **auto-detected** from the running desktop app on macOS and Linux.
+> Use the httptoolkit MCP. List events from the last 200 captures. For each unique endpoint (method + path), tell me whether at least one capture had an Authorization header. Highlight endpoints where no captures had auth.
 
-| Tool | Description |
-|:-----|:------------|
-| **`replay_request`** | Replay a captured event with optional mutations. The core tool for security testing. |
-| **`replay_raw`** | Send an arbitrary HTTP request (not based on a capture). For crafted payloads. |
+What this does: identifies endpoints that may be reachable without authentication. Common starting point for finding broken access control.
 
-<details>
-<summary><strong>replay_request — Full Schema</strong></summary>
+### 3. Test for IDOR / BOLA on a captured request
 
-```
-Input: {
-  event_id: string              — ID of the captured event to replay
-  mutations?: {                 — Optional mutations to apply
-    "headers.<name>": value,    — Set/replace/delete a header
-    "url.path": "/new/path",    — Replace URL path
-    "url.path.<n>": "segment",  — Replace nth path segment (0-indexed)
-    "url.query.<name>": value,  — Set/replace/delete query param
-    "url.host": "new.host",     — Change target host
-    "method": "DELETE",         — Change HTTP method
-    "body.raw": "...",          — Replace entire body
-    "body.<field>": value       — Patch JSON body field
-  }
-  description: string           — Required. For the audit log.
-  ignore_https_errors?: boolean — Ignore TLS certificate errors
-}
+> Use the httptoolkit MCP. Find a captured request whose path looks like `/users/<id>`, `/accounts/<id>`, or similar. Use replay_request to fire it 5 times with the user ID in the path replaced by 5 different values (try sequential IDs near the original). Compare response status and body sizes — flag any that returned 200 with a non-empty body suggesting cross-tenant data access.
 
-Output: {
-  status: number,               — HTTP status code
-  headers: object,              — Response headers
-  body: string,                 — Response body (truncated at 64KB)
-  body_truncated: boolean,
-  body_size: number,
-  timing: { startTime, endTime, durationMs },
-  replay_id: string,            — Unique ID for this replay
-  audit_id: string              — Links to audit log entry
-}
-```
-</details>
+What this does: checks whether the endpoint validates that the requesting user owns the resource being requested. The mutation engine handles the path substitution; the LLM compares responses.
 
-<details>
-<summary><strong>replay_raw — Full Schema</strong></summary>
+### 4. Auth bypass test
 
-```
-Input: {
-  method: string,               — HTTP method
-  url: string,                  — Full target URL
-  headers?: [string, string][], — Request headers as [name, value] pairs
-  body?: string,                — Request body
-  body_encoding?: "utf-8"|"base64",
-  description: string,          — Required. For the audit log.
-  ignore_https_errors?: boolean
-}
+> Use the httptoolkit MCP. Pick a captured request that has an Authorization header and returned 200. Use replay_request to fire it twice — once unmodified, once with `mutations: {"headers.Authorization": ""}`. If the second one also returns 200 with similar body, that's an authentication bypass candidate.
 
-Output: { same as replay_request }
-```
-</details>
+What this does: tests whether the endpoint actually enforces the auth header it sends. Many endpoints accept credentials but don't validate them.
 
-#### Verifying Replays
+### 5. Privilege escalation via body field
 
-> **Important:** Replays do **not** appear in HTTPToolkit's View tab or Send tab. The View tab shows organic intercepted traffic; the Send tab is UI-initiated only. Replays fired via the MCP are returned directly to the LLM and recorded in the audit log at `~/.httptoolkit-mcp/audit.jsonl`. **The audit log is your ground truth** for what the LLM actually fired.
+> Use the httptoolkit MCP. Find a captured POST with a JSON body containing fields like `is_admin`, `role`, `user_id`, `permissions`, or similar. Use replay_request to fire it twice — once unmodified, once with the suspected privilege field flipped (e.g., `mutations: {"body.is_admin": true}`). Compare responses and tell me whether the server accepted the modified field.
+
+What this does: tests for mass-assignment vulnerabilities where the API trusts client-supplied fields it shouldn't.
+
+### 6. Scope-aware exploration
+
+> Use the httptoolkit MCP. List events filtered to only `api.example.com`. For each unique endpoint, tell me what HTTP method it accepts, whether it returns JSON, and whether the response includes any obvious sensitive fields like email addresses, internal IDs, or tokens.
+
+What this does: focused analysis on a single host. Useful when proxying multiple services and you want to focus on one.
 
 ---
 
-## Security Testing Workflows
+## Authentication and replay
 
-### BOLA / IDOR Testing
+The MCP uses two communication channels with HTTPToolkit:
 
-```
-1. Capture a request to /api/users/123/profile (user A's session)
-2. "Replay this request but swap the user ID to 456"
-   → mutations: { "url.path.2": "456" }
-3. If you get user 456's data back → finding: BOLA vulnerability
-```
+1. **Unix socket** (no auth needed) — used for read tools and server status
+2. **HTTP API on port 45457** (token required) — used for replay tools
 
-### Authorization Bypass
+**Read tools work immediately** as long as HTTPToolkit's desktop app is running.
 
-```
-1. Capture an authenticated request with Authorization header
-2. "Replay without the auth header"
-   → mutations: { "headers.Authorization": null }
-3. If the request succeeds → finding: missing auth check
-```
+**Replay tools require the HTTPToolkit session token.** Starting in `0.2.0`, the MCP automatically discovers this token from the running HTTPToolkit process on macOS and Linux:
 
-### Privilege Escalation
+- macOS: via `sysctl(KERN_PROCARGS2)` (uses bundled native binary)
+- Linux: via `/proc/<pid>/environ`
 
-```
-1. Capture a POST to /api/users (creating a normal user)
-2. "Replay with is_admin set to true"
-   → mutations: { "body.is_admin": true }
-3. If the user is created as admin → finding: mass assignment / privilege escalation
-```
+This means **replay just works when HTTPToolkit is running** — no manual token configuration.
 
-### Verb Tampering
+### When auto-detection won't work
 
-```
-1. Capture a GET request to /api/admin/users
-2. "Replay as DELETE"
-   → mutations: { "method": "DELETE" }
-3. If data is deleted → finding: missing method restrictions
-```
+- **HTTPToolkit isn't running** → start the desktop app and retry.
+- **HTTPToolkit Free tier** → `/client/send` is a Pro feature. Replay calls return tier-required errors. Read tools continue to work.
+- **Windows** → not yet supported for auto-detection. Set `HTK_SERVER_TOKEN` manually if you've obtained it through other means.
+- **Linux ARM64** → not yet supported for auto-detection (no prebuilt binary). Set `HTK_SERVER_TOKEN` manually or use x86 Linux.
 
-### SSRF Probing
+### Manual token override
 
-```
-1. Capture a request with a URL parameter (e.g., callback_url)
-2. "Replay with callback_url pointing to internal service"
-   → mutations: { "url.query.callback_url": "http://169.254.169.254/latest/meta-data/" }
-3. If metadata is returned → finding: SSRF vulnerability
-```
-
-### Burp Suite Integration
-
-Route all replays through Burp for additional passive scanning:
-
-```bash
-BURP_UPSTREAM=http://127.0.0.1:8080 httptoolkit-mcp
-```
-
-Replayed requests appear in Burp's HTTP history for further manual analysis. The dual-proxy chain is: **MCP → HTTPToolkit → Burp → Target**.
-
----
-
-## Authentication
-
-### How It Works
-
-HTTPToolkit uses two communication channels:
-
-| Channel | Auth Required | Used For |
-|:--------|:--------------|:---------|
-| **Unix socket** | No | Read tools (`events_*`, `server_status`, `interceptors_list`) |
-| **HTTP API** (port 45457) | Yes (Bearer token) | Replay tools (`replay_request`, `replay_raw`) |
-
-**Read tools work immediately** — zero config, as long as HTTPToolkit is running.
-
-**Replay tools auto-detect the token** from the running HTTPToolkit server process:
-
-```
-Resolution Chain:
-  1. HTK_SERVER_TOKEN env var     ← explicit override (highest priority)
-  2. Auto-detect from OS process  ← sysctl (macOS) / /proc (Linux)
-  3. null                         ← clear error with instructions
-```
-
-The desktop app generates a random token per session and passes it to the server process. Even though the server deletes the variable from its Node.js heap, **the OS kernel retains the initial process environment**. The MCP reads this via platform-native APIs.
-
-### Platform Support for Auto-Detection
-
-| Platform | Auto-Detection | Mechanism |
-|:---------|:--------------:|:----------|
-| **macOS Intel** | Yes | `sysctl(KERN_PROCARGS2)` |
-| **macOS Apple Silicon** | Yes | `sysctl(KERN_PROCARGS2)` |
-| **Linux x86_64** | Yes | `/proc/<pid>/environ` |
-| **Linux ARM64** | Manual | Set `HTK_SERVER_TOKEN` |
-| **Windows** | Manual | Set `HTK_SERVER_TOKEN` |
-
-### Manual Token Setup (When Auto-Detection Isn't Available)
-
-Run the server standalone with a known token:
-
-```bash
-HTK_SERVER_TOKEN=my-known-token httptoolkit-server start
-```
-
-Then pass the same token to the MCP via your LLM client's config:
+For environments where auto-detection doesn't work, set the env var explicitly:
 
 ```json
 {
@@ -374,147 +218,237 @@ Then pass the same token to the MCP via your LLM client's config:
       "command": "npx",
       "args": ["-y", "@ninjascout77/httptoolkit-mcp"],
       "env": {
-        "HTK_SERVER_TOKEN": "my-known-token"
+        "HTK_SERVER_TOKEN": "your-token-value"
       }
     }
   }
 }
 ```
 
-### Token Security Model
+The explicit env var takes priority over auto-detection.
 
-> The `HTK_SERVER_TOKEN` is a **local-only authenticator**, not a cryptographic secret. It prevents other local processes from accidentally controlling your HTTPToolkit instance. The real security boundary is your OS user account — any same-user process can read the token via the same mechanism the MCP uses. This is by design: HTTPToolkit is a local development tool, and its threat model assumes a trusted local user.
+### Where replays appear in HTTPToolkit's UI
+
+This trips up new users — worth being explicit:
+
+- Replays fired by `replay_request` and `replay_raw` do **not** appear in HTTPToolkit's View tab (which shows organic intercepted traffic only).
+- Replays do **not** create entries in HTTPToolkit's Send tab (which is reserved for UI-initiated requests).
+- Replays **are** recorded in `~/.httptoolkit-mcp/audit.jsonl` with timestamp, target, response status, mutations, and description. **This is your ground truth.**
+- The full response is returned directly to the LLM via the tool result.
+
+This is HTTPToolkit's architectural choice — `/client/send` calls via REST API bypass the proxy capture path. The audit log is the canonical record.
+
+---
+
+## Tier requirements
+
+| Tool | Free tier | Pro tier |
+|---|---|---|
+| `events_list`, `events_get`, `events_body` | ✓ | ✓ |
+| `server_status`, `interceptors_list` | ✓ | ✓ |
+| `replay_request`, `replay_raw` | Tier-required error returned | ✓ |
+
+Tier enforcement is HTTPToolkit's policy, not ours. We pass their errors through with clear upgrade messages.
+
+[Get HTTPToolkit Pro →](https://httptoolkit.com/get-pro)
+
+---
+
+## Burp Suite integration
+
+The honest answer to *"why use both"* — they're good at different things.
+
+### What each tool is best at
+
+**HTTPToolkit excels at device-side interception.** One-click Android cert injection on rooted devices. Built-in Flutter SSL pinning bypass via Frida. Per-app interception that doesn't affect other device traffic. Electron apps launched with proxy attached. Terminal sessions with HTTP_PROXY pre-configured. iOS interception via Frida.
+
+**Burp Suite excels at tester-side analysis.** Repeater for manual request iteration. Intruder for fuzzing and enumeration. Scanner for automated vulnerability detection. Decades of plugins and integrations.
+
+For mobile and electron pentesting where Burp's interception path is painful, HTTPToolkit-on-device + Burp-as-upstream is genuinely the best of both worlds.
+
+### The chain
+
+```
+Mobile/desktop client → HTTPToolkit → Burp → target
+```
+
+HTTPToolkit handles device-side complexity. Burp captures everything HTTPToolkit forwards. Both UIs show the same traffic. Our MCP can do LLM-driven analysis on captured traffic and fire mutated replays — they appear in both HTK and Burp. Manual testing happens in Burp's Repeater on the candidates the LLM identified.
+
+### Configuration
+
+In HTTPToolkit: Settings → Connection → Upstream proxy → `http://127.0.0.1:8080` (or wherever Burp listens).
+
+In httptoolkit-mcp environment:
+
+```bash
+export BURP_UPSTREAM=http://127.0.0.1:8080
+```
+
+When set, replays through our MCP route via Burp upstream. The MCP TCP-probes Burp on startup and warns if it's unreachable.
 
 ---
 
 ## Configuration
 
-| Variable | Default | Description |
-|:---------|:--------|:------------|
-| `HTK_SERVER_TOKEN` | Auto-detected | Auth token for replay tools (read tools work without it) |
-| `HTK_SERVER_HOST` | `127.0.0.1` | HTTPToolkit server host |
+All optional. Set in environment when launching the MCP.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `HTK_SERVER_TOKEN` | unset (auto-detected) | Auth token for HTTPToolkit's HTTP API. Required for replay tools. Auto-discovered on macOS/Linux when HTTPToolkit is running. Explicit override always wins. |
+| `HTK_SERVER_HOST` | `127.0.0.1` | HTTPToolkit host |
 | `HTK_API_PORT` | `45457` | HTTPToolkit REST API port |
-| `BURP_UPSTREAM` | — | Upstream proxy URL (e.g., `http://127.0.0.1:8080`) |
-| `REPLAY_ALLOWLIST` | Permissive + warning | Comma-separated host patterns: `*.example.com,api.test.local` |
-| `REPLAY_RATE_LIMIT_RPS` | `10` | Max replays per second per target host |
-| `REPLAY_RATE_LIMIT_QUEUE` | `100` | Max queued replays before rejection |
-| `AUDIT_LOG_PATH` | `~/.httptoolkit-mcp/audit.jsonl` | Audit log location |
+| `BURP_UPSTREAM` | unset | Upstream proxy URL for replay routing |
+| `REPLAY_ALLOWLIST` | unset (permissive + warns) | Comma-separated host patterns. Wildcards supported (`*.example.com`). |
+| `REPLAY_RATE_LIMIT_RPS` | `10` | Per-host replay rate limit |
+| `AUDIT_LOG_PATH` | `~/.httptoolkit-mcp/audit.jsonl` | Forensic trail location |
 | `LOG_LEVEL` | `info` | `debug`, `info`, `warn`, `error` |
 
 ---
 
-## Tier Requirements
+## Safety
 
-| Tool | Free Tier | Pro Tier |
-|:-----|:---------:|:--------:|
-| `events_list` | Yes | Yes |
-| `events_get` | Yes | Yes |
-| `events_body` | Yes | Yes |
-| `server_status` | Yes | Yes |
-| `interceptors_list` | Yes | Yes |
-| `replay_request` | Yes* | Yes |
-| `replay_raw` | Yes* | Yes |
+This MCP can fire real HTTP requests at real targets. Three safeguards built in.
 
-> *Basic replay works on Free tier. Some advanced `/client/send` features may require Pro.
+### Scope allowlist
+
+Set `REPLAY_ALLOWLIST=api.example.com,*.test.local` and replays to other hosts return a structured error. Catches the LLM accidentally hitting the wrong target.
+
+If unset, replays go through but each one logs a warning. **Strongly recommended for production engagements.**
+
+### Rate limiting
+
+Per-target-host token bucket. Default 10 requests per second. Stops the LLM from accidentally DoS-ing a target while iterating mutations.
+
+### Audit log
+
+Every replay appends to `~/.httptoolkit-mcp/audit.jsonl`:
+
+```json
+{"timestamp":"2026-04-28T19:23:11Z","replay_id":"...","source_event_id":"...","mutations":{"headers.Authorization":""},"target_url":"https://...","response_status":200,"description":"BOLA test 1 of 5"}
+```
+
+Append-only. Auto-rotates at 100MB. Survives across sessions. Use this as evidence for your test report.
 
 ---
 
-## Working with LLM Clients
+## Working with LLM clients
 
-### LLM Memory and Tool Results
+The MCP returns structured tool results to whatever LLM client you've connected. Some practical notes about LLM behavior that affect security work specifically.
 
-LLM clients maintain conversation memory. When you call an MCP tool, the LLM has two context sources: the **actual tool result** and **whatever it remembers from prior conversations**. Default behavior is to combine them — which can mean stating memory-derived claims with tool-anchored authority.
+### LLM memory and tool results
 
-**For security work where data segregation matters:**
+LLM clients like Claude Desktop maintain persistent conversation memory across sessions. When you call an MCP tool, the LLM has two relevant context sources: the actual tool result, and whatever it remembers from prior conversations. Default LLM behavior is to combine them into a "helpful" response — which can mean stating memory-derived claims with the same authority as tool-anchored facts.
 
-> **Pattern 1 — Tool output only:**
-> *"Call the `events_list` tool from the httptoolkit MCP. Show me only the fields the tool returned. Do not interpret, do not connect to other context."*
+Concrete example: ask `server_status` and the LLM may add commentary like *"and your previous engagement chain was X"* — where the engagement detail came from memory, not from the tool.
 
-> **Pattern 2 — Demand provenance:**
-> *"For each statement, label whether it came from a tool result `[from MCP]` or from your inference `[inference]`."*
+This matters for security testing where you need clean separation between *what the data shows* and *what the LLM remembers*. Two patterns help.
 
-### LLMs May Hallucinate Setup Steps
+#### Pattern 1 — Constrain to tool output only
 
-When asked how to configure tools, LLMs may **invent plausible-sounding file paths and config steps that don't exist**. A real example: an LLM suggested reading the token from `~/Library/Preferences/httptoolkit/auth-token` — that file has never existed. HTTPToolkit holds the token only in process memory.
+For factual MCP queries where you want only what the tool returned:
 
-**Defend against this:**
-- `ls` any file path before trusting it
-- `which` any command before running it
-- Ask: *"Can you point me to where this is documented?"*
-- **Prefer this README** over LLM-generated setup instructions
+> Call the `<tool_name>` tool from the httptoolkit MCP connector. Show me only the fields the tool actually returned. Do not interpret, do not connect to other context, do not infer.
 
-### Recommendations for Security Engagements
+#### Pattern 2 — Demand provenance
 
-- Run testing in a **fresh LLM session** with memory disabled for data segregation
-- Be explicit: *"from the httptoolkit MCP connector"* to avoid tool ambiguity
-- Treat LLM responses as **analyst notes, not findings** — verify against raw tool output
-- Set `REPLAY_ALLOWLIST` to lock scope before giving the LLM replay access
+For analytical queries where you want the LLM's reasoning but need to separate it from raw data:
+
+> Use the MCP tools as needed. For each statement in your response, indicate whether it came from a tool result (label `[from MCP]`) or from your memory or inference (label `[from memory]` or `[inference]`).
+
+### LLMs may hallucinate setup steps
+
+When you ask an LLM how to configure or unblock a tool, it may invent file paths, environment variable names, or configuration steps that sound plausible but don't exist on your system.
+
+A real example: when an LLM was asked how to enable replay tools in `httptoolkit-mcp`, it suggested reading the token from `~/Library/Preferences/httptoolkit/auth-token`. That file does not exist — HTTPToolkit holds the token only in process memory and never writes it to disk. The LLM produced a confident, well-formatted answer that would have wasted setup time.
+
+How to defend:
+
+- Verify any file path the LLM mentions before reading or writing to it (`ls` it first).
+- Verify any command the LLM tells you to run by checking the binary exists (`which <command>`).
+- When the LLM gives setup advice, ask: *"Can you point me to where this is documented?"* — forces the LLM to either cite a real source or admit it doesn't know.
+- For security tools, prefer the project's README and CHANGELOG over LLM-generated setup instructions.
+
+### Recommendations
+
+- For client engagements where data segregation matters, run security testing in a dedicated LLM session with memory disabled, or in a fresh conversation.
+- Be explicit about which MCP connector to use when calling tools (e.g., *"from the httptoolkit MCP connector"*) — this avoids ambiguity if you have multiple MCPs configured.
+- Treat LLM responses as analyst notes, not findings. Cross-reference any actionable claim against the underlying tool output before acting on it.
+- The HTK_SERVER_TOKEN is not cryptographically secret — it's a local-only authenticator. Your user account is the security boundary.
 
 ---
 
 ## Troubleshooting
 
-<details>
-<summary><strong>"Cannot connect to HTTPToolkit via socket" on macOS</strong></summary>
+### `replayAvailable: false` even though HTTPToolkit is running
 
-**Cause:** Some LLM clients (verified: **Claude Desktop**) strip `$TMPDIR` from child process environments. This causes incorrect socket path computation.
+**Possible causes:**
 
-**Not affected:** Claude Code (CLI) — propagates `$TMPDIR` correctly.
+1. **You're on HTTPToolkit Free.** Replay requires Pro. Read tools still work.
+2. **Auto-detection couldn't find the running httptoolkit-server process.** Check that HTTPToolkit's desktop app is fully launched (not just the splash screen). Restart HTTPToolkit and retry.
+3. **You're on Windows or Linux ARM64.** Auto-detection isn't supported on these platforms yet. Set `HTK_SERVER_TOKEN` manually if you've obtained the token through other means.
 
-**Fix:** Upgrade to `@ninjascout77/httptoolkit-mcp@>=0.2.0` which resolves the path via `getconf DARWIN_USER_TEMP_DIR`. For older versions, inject `TMPDIR` manually:
+### "Cannot connect to HTTPToolkit via socket at /tmp/..." on macOS
 
-```json
-{
-  "env": { "TMPDIR": "/var/folders/.../T/" }
-}
-```
+**Cause:** Some LLM clients launch MCP child processes with sanitized environments that don't propagate `$TMPDIR`. Verified behavior:
 
-Get your value with: `getconf DARWIN_USER_TEMP_DIR`
-</details>
+- **Claude Desktop:** strips `$TMPDIR` (affected pre-0.2.0)
+- **Claude Code (CLI):** propagates `$TMPDIR` correctly (not affected)
 
-<details>
-<summary><strong>MCP not appearing in Claude Desktop's connectors list</strong></summary>
+**Fix:** Upgrade to `0.2.0` or later — uses `getconf DARWIN_USER_TEMP_DIR` directly, no env var dependency.
 
-1. Validate JSON syntax: `cat ~/Library/Application\ Support/Claude/claude_desktop_config.json | python3 -m json.tool`
-2. Confirm node path: `which node`
-3. Confirm dist exists: `ls /path/to/httptoolkit-mcp/dist/index.js`
-4. Check logs: `tail -50 ~/Library/Logs/Claude/mcp-server-httptoolkit.log`
-</details>
+### MCP not appearing in Claude Desktop's connectors list
 
-<details>
-<summary><strong>"replayAvailable: false" even though HTTPToolkit is running</strong></summary>
+**Common causes:**
 
-**Cause:** Token auto-detection failed. Possible reasons:
-- Windows or Linux ARM64 (auto-detection not yet supported)
-- HTTPToolkit server restarted between detection attempts
-- OS restricts reading other processes' environment
+1. JSON syntax error in `claude_desktop_config.json`. Validate: `cat ~/Library/Application\ Support/Claude/claude_desktop_config.json | python3 -m json.tool`
+2. Wrong path to `node` or `dist/index.js`. Confirm with `which node` and `ls /path/to/dist/index.js`.
+3. The MCP crashed on startup. Check the log: `tail -50 ~/Library/Logs/Claude/mcp-server-httptoolkit.log`
 
-**Fix:** Set `HTK_SERVER_TOKEN` manually. Run `httptoolkit-server start --token my-token` and use the same token in your MCP config.
-</details>
+### `HTTPTOOLKIT_NOT_RUNNING` error
+
+The MCP detected that no `httptoolkit-server` process is running. Start HTTPToolkit's desktop app and retry. If HTTPToolkit IS running and you still see this, check `pgrep -lf httptoolkit-server` to confirm the process is visible to your shell.
+
+### Replays don't show in HTTPToolkit's View tab
+
+This is by design. See [§ Where replays appear](#where-replays-appear-in-httptoolkits-ui). Check `~/.httptoolkit-mcp/audit.jsonl` to confirm replays actually fired.
 
 ---
 
-## Known Limitations
+## Known limitations
 
-- **Token auto-detection** requires macOS (x64/ARM64) or Linux x64. Windows and Linux ARM64 require manual `HTK_SERVER_TOKEN`.
-- **No persistent capture history** beyond what HTTPToolkit holds. Restarting HTTPToolkit clears the event store.
-- **Replay visibility** — replays do not appear in HTTPToolkit's View tab or Send tab. The audit log is your ground truth.
-- **Tested against** HTTPToolkit 1.19.4 / httptoolkit-server 1.25.1. Other versions should work but are untested.
+Stated honestly:
+
+- **Token auto-detection requires native code** — uses `sysctl` on macOS and `/proc` on Linux. Prebuilt binaries ship for `darwin-x64`, `darwin-arm64`, `linux-x64`. Other platforms (Windows, Linux ARM64) need manual `HTK_SERVER_TOKEN`.
+- **Live capture subscription** is `1.0.0` (Phase 2), not in current version. Read tools list events HTTPToolkit has already captured. Real-time streaming comes later.
+- **Findings tracking, batch replay** — also `1.0.0` (Phase 2).
+- **Tier check on `/client/send`** may block replays for HTTPToolkit Free users. We don't enforce this; HTTPToolkit does.
+
+---
+
+## Documentation
+
+- [CHANGELOG.md](./CHANGELOG.md) — version history
+
+---
+
+## Contributing
+
+Issues and PRs welcome. Open an issue first for substantial changes so we can align on direction.
+
+For security concerns: please email the maintainer before opening a public issue.
 
 ---
 
 ## Credits
 
-Built by [Pradeep Suvarna](https://github.com/NinjaScout77) (NinjaScout77).
+Built by Pradeep Suvarna ([NinjaScout77](https://github.com/NinjaScout77)).
 
-**Thanks to:**
-- [Tim Perry](https://github.com/pimterry) for [HTTPToolkit](https://httptoolkit.com) — the platform this builds on
-- [fdciabdul](https://github.com/fdciabdul/httptoolkit-mcp) for prior art that informed early design decisions
+Thanks to:
+- [Tim Perry](https://github.com/pimterry) for HTTPToolkit, which makes mobile interception genuinely tractable
+- [PortSwigger](https://github.com/PortSwigger) for setting the bar with their Burp MCP architecture
 
 ---
 
 ## License
 
-**MIT** — see [LICENSE](./LICENSE).
-
-> **Only test systems you have explicit permission to test.** This tool facilitates security testing; using it against systems without authorization is illegal and unethical. Always obtain written authorization before testing third-party systems. Use responsibly.
+MIT — see [LICENSE](./LICENSE)

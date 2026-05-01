@@ -7,3 +7,18 @@ coverage/
 .httptoolkit-mcp/
 *.tgz
 .DS_Store
+
+# Internal project files — not for public repo
+CLAUDE.md
+PLANNING.md
+docs/
+Plans/
+apktool_mcp_server_workspace/
+.claude/
+
+# Sensitive / credential files
+*.pem
+*.key
+*.p12
+*.pfx
+*.secret
