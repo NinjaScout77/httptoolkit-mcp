@@ -2,7 +2,7 @@
 
 **Drive HTTPToolkit from any MCP-compatible LLM client. Built for security testing on traffic that HTTPToolkit captures — mobile apps, electron apps, browsers, terminals.**
 
-[![CI](https://github.com/NinjaScout77/HttpToolKit-MCP/actions/workflows/ci.yml/badge.svg)](https://github.com/NinjaScout77/HttpToolKit-MCP/actions)
+[![CI](https://github.com/NinjaScout77/httptoolkit-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/NinjaScout77/httptoolkit-mcp/actions)
 [![npm](https://img.shields.io/npm/v/@ninjascout77/httptoolkit-mcp.svg)](https://www.npmjs.com/package/@ninjascout77/httptoolkit-mcp)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
