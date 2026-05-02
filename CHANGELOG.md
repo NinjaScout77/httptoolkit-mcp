@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.2.2 — Intel Mac support
+
+### Fixed
+- **Missing `darwin-x64` prebuilt binary** in published 0.2.0 and 0.2.1 packages — Intel Mac users got silent auto-detection failure with no `HTK_SERVER_TOKEN`. Resolved by cross-compiling from `macos-15` runners with `-arch x86_64` after GitHub deprecated `macos-13` runners.
+
+### Changed
+- **CI workflow** switched from `macos-13` (dead) to `macos-15` with cross-compile flags for darwin-x64 builds. darwin-arm64 also moved to `macos-15` for consistency.
+- **Platform warning** — logs a one-time warning when no native binary exists for the current platform, instead of silently returning null.
+- **npm metadata** — improved package description and added keywords for discoverability.
+
+### Notes
+- 0.2.0 and 0.2.1 worked correctly on Apple Silicon Macs (`darwin-arm64`) and Linux x86_64. Only Intel Macs were affected.
+
 ## 0.2.0 — Auto-detection and Reliability
 
 ### Added
