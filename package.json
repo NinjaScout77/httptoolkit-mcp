@@ -1,7 +1,19 @@
 {
   "name": "@ninjascout77/httptoolkit-mcp",
   "version": "0.2.0",
-  "description": "Drive HTTPToolkit from any MCP-compatible LLM client",
+  "description": "MCP server for LLM-driven security testing via HTTPToolkit — capture analysis, mutation-based replay, audit trails for mobile and electron app pentesting",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "httptoolkit",
+    "security-testing",
+    "pentesting",
+    "api-security",
+    "mobile-security",
+    "claude",
+    "anthropic",
+    "burp-suite"
+  ],
   "author": "Pradeep Suvarna (NinjaScout77)",
   "license": "MIT",
   "type": "module",
