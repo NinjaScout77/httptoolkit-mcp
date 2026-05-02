@@ -68,3 +68,33 @@ jobs:
         with:
           name: prebuilds-all
           path: prebuilds/
+
+  commit-prebuilds:
+    needs: package
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: master
+
+      - name: Download all prebuilds
+        uses: actions/download-artifact@v4
+        with:
+          name: prebuilds-all
+          path: prebuilds/
+
+      - name: Commit prebuilds
+        run: |
+          chmod 755 prebuilds/*/htk-getenv
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add prebuilds/
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "build: prebuilt binaries for ${{ github.ref_name }}"
+            git push origin master
+          fi
