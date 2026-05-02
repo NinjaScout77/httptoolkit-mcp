@@ -7,6 +7,8 @@ import { createLogger } from './logger.js';
 
 const log = createLogger('process-env');
 
+let warnedNoBinary = false;
+
 /**
  * Returns the path to the prebuilt htk-getenv binary for the current platform,
  * or null if no binary is available for this platform/arch combination.
@@ -26,7 +28,16 @@ export function getNativeBinaryPath(): string | null {
     fs.accessSync(binaryPath, fs.constants.X_OK);
     return binaryPath;
   } catch {
-    log.debug(`No prebuilt binary for ${dirName} at ${binaryPath}`);
+    if (!warnedNoBinary) {
+      warnedNoBinary = true;
+      log.warn(
+        `No prebuilt native binary for ${dirName}. Auto-detection of HTK_SERVER_TOKEN ` +
+          `is unavailable on this platform. Set HTK_SERVER_TOKEN explicitly to use replay tools. ` +
+          `See README troubleshooting section for details.`,
+      );
+    } else {
+      log.debug(`No prebuilt binary for ${dirName} at ${binaryPath}`);
+    }
     return null;
   }
 }
